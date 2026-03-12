@@ -1,199 +1,116 @@
 import os
-import requests
 import time
+import json
+import csv
+import requests
 import smtplib
-from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
 
-# -----------------------------
+# --------------------------
 # CONFIGURATION
-# -----------------------------
+# --------------------------
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
+ACTOR_ID = "WI0tj4Ieb5Kq458gB"  
+OUTPUT_FILE_JSON = "linkedin_data.json"
+OUTPUT_FILE_CSV = "linkedin_report.csv"
 
-PROFILES = [
-    "https://www.linkedin.com/company/leumitech",
-    "https://www.linkedin.com/company/profile2",
-    "https://www.linkedin.com/company/profile3"
-]
+SENDER_EMAIL = "ylivneh@gmail.com"        # your Gmail address
+SENDER_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+RECIPIENT_EMAIL = "ylivneh@gmail.com"     # same as your email
 
-APIFY_TOKEN = os.environ["APIFY_TOKEN"]
-ACTOR_ID = "WI0tj4Ieb5Kq458gB"
+# --------------------------
+# 1. RUN ACTOR
+# --------------------------
+def run_actor():
+    url = f"https://api.apify.com/v2/actor-runs"
+    headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
+    data = {"actorId": ACTOR_ID}
+    response = requests.post(url, headers=headers, json=data)
+    response.raise_for_status()
+    run_data = response.json()
+    run_id = run_data["data"]["id"]
+    print(f"Actor run started: {run_id}")
+    return run_id
 
-GMAIL_USER = os.environ["GMAIL_USER"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-
-
-# -----------------------------
-# APIFY SCRAPER
-# -----------------------------
-
-def fetch_posts(profile_url):
-
-    print(f"Triggering Apify actor for {profile_url}")
-
-    run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
-
-    actor_input = {
-        "profileUrl": profile_url,
-        "maxPosts": 20
-    }
-
-    run = requests.post(run_url, json=actor_input).json()
-    run_id = run["data"]["id"]
-
+# --------------------------
+# 2. WAIT FOR ACTOR TO FINISH
+# --------------------------
+def wait_for_completion(run_id):
+    url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
     print("Waiting for actor to finish...")
-
-    status = "RUNNING"
-
-    while status in ["RUNNING", "READY"]:
+    while True:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        run_info = resp.json()["data"]
+        status = run_info["status"]
+        if status in ["SUCCEEDED", "FAILED", "ABORTED"]:
+            print(f"Actor finished with status: {status}")
+            if status != "SUCCEEDED":
+                raise RuntimeError(f"Actor run did not succeed: {status}")
+            break
         time.sleep(10)
 
-        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
-        status_resp = requests.get(status_url).json()
+# --------------------------
+# 3. DOWNLOAD DATASET
+# --------------------------
+def download_dataset(run_id, output_json=OUTPUT_FILE_JSON):
+    url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?format=json"
+    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"Dataset saved to {output_json}")
+    return data
 
-        status = status_resp["data"]["status"]
-        print("Actor status:", status)
+# --------------------------
+# 4. GENERATE CSV REPORT
+# --------------------------
+def generate_csv_report(data, output_csv=OUTPUT_FILE_CSV):
+    rows = []
+    for item in data:
+        row = {
+            "postUrl": item.get("postUrl"),
+            "author": item.get("authorName"),
+            "date": item.get("postedAt"),
+            "reactionsCount": item.get("reactionsCount", 0),
+            "commentsCount": item.get("commentsCount", 0),
+            "content": item.get("content", "").replace("\n", " ")
+        }
+        rows.append(row)
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"CSV report generated: {output_csv}")
+    return output_csv
 
-    dataset_id = status_resp["data"]["defaultDatasetId"]
+# --------------------------
+# 5. SEND EMAIL
+# --------------------------
+def send_email(file_path, subject="Weekly LinkedIn Report"):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECIPIENT_EMAIL
+    msg.set_content("Attached is this week's LinkedIn posts report.")
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(file_path)
+    msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
+        smtp.send_message(msg)
+    print(f"Email sent to {RECIPIENT_EMAIL}")
 
-    dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=1"
-
-    posts = requests.get(dataset_url).json()
-
-    return posts
-
-
-# -----------------------------
-# FILTER LAST WEEK
-# -----------------------------
-
-def filter_last_week(posts):
-
-    one_week_ago = datetime.utcnow() - timedelta(days=7)
-    filtered = []
-
-    for post in posts:
-
-        date_str = post.get("postedAt")
-        if not date_str:
-            continue
-
-        try:
-            post_date = datetime.fromisoformat(date_str.replace("Z", ""))
-        except:
-            continue
-
-        if post_date > one_week_ago:
-            filtered.append(post)
-
-    return filtered
-
-
-# -----------------------------
-# REPORT GENERATION
-# -----------------------------
-
-def generate_report(profile_posts):
-
-    report = "Weekly LinkedIn Activity Report\n\n"
-
-    global_top_post = None
-    global_top_profile = None
-
-    for profile, posts in profile_posts.items():
-
-        total_posts = len(posts)
-
-        total_likes = sum(p.get("reactionsCount", 0) for p in posts)
-        total_comments = sum(p.get("commentsCount", 0) for p in posts)
-        total_reposts = sum(p.get("sharesCount", 0) for p in posts)
-
-        report += f"Profile: {profile}\n"
-        report += f"Posts this week: {total_posts}\n\n"
-
-        report += "Total Engagement\n"
-        report += f"Likes: {total_likes}\n"
-        report += f"Comments: {total_comments}\n"
-        report += f"Reposts: {total_reposts}\n\n"
-
-        if posts:
-
-            top_post = max(posts, key=lambda p: p.get("reactionsCount", 0))
-
-            report += "Top Post\n"
-            report += f"Likes: {top_post.get('reactionsCount',0)} | "
-            report += f"Comments: {top_post.get('commentsCount',0)} | "
-            report += f"Reposts: {top_post.get('sharesCount',0)}\n"
-
-            report += "\n"
-
-            if not global_top_post or top_post.get("reactionsCount",0) > global_top_post.get("reactionsCount",0):
-                global_top_post = top_post
-                global_top_profile = profile
-
-        report += "-----------------------------\n\n"
-
-    if global_top_post:
-
-        report += "🏆 Top Post Across All Profiles\n"
-        report += f"Profile: {global_top_profile}\n"
-        report += f"Likes: {global_top_post.get('reactionsCount',0)}\n"
-        report += f"Comments: {global_top_post.get('commentsCount',0)}\n"
-        report += f"Reposts: {global_top_post.get('sharesCount',0)}\n"
-
-    return report
-
-
-# -----------------------------
-# EMAIL
-# -----------------------------
-
-def send_email(report_text):
-
-    msg = MIMEMultipart()
-
-    msg["From"] = GMAIL_USER
-    msg["To"] = GMAIL_USER
-    msg["Subject"] = "Weekly LinkedIn Activity Report"
-
-    msg.attach(MIMEText(report_text, "plain"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
-
-    print("Email sent")
-
-
-# -----------------------------
-# MAIN
-# -----------------------------
-
-def main():
-
-    profile_posts = {}
-
-    for profile in PROFILES:
-
-        print(f"Fetching posts for {profile}")
-
-        posts = fetch_posts(profile)
-
-        posts = filter_last_week(posts)
-
-        profile_posts[profile] = posts
-
-    print("Generating report")
-
-    report_text = generate_report(profile_posts)
-
-    print(report_text)
-
-    print("Sending email")
-
-    send_email(report_text)
-
-
+# --------------------------
+# MAIN FLOW
+# --------------------------
 if __name__ == "__main__":
-    main()
+    run_id = run_actor()
+    wait_for_completion(run_id)
+    data = download_dataset(run_id)
+    csv_file = generate_csv_report(data)
+    send_email(csv_file)
