@@ -1,98 +1,199 @@
 import os
 import requests
+import time
 import smtplib
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# -------------------------------
-# CONFIG
-# -------------------------------
+# -----------------------------
+# CONFIGURATION
+# -----------------------------
+
 PROFILES = [
     "https://www.linkedin.com/company/leumitech",
     "https://www.linkedin.com/company/profile2",
     "https://www.linkedin.com/company/profile3"
 ]
 
-# Apify actor dataset URL pattern (replace YOUR_DATASET_ID with your actor dataset ID)
-DATASET_URL_PATTERN = "https://api.apify.com/v2/datasets/Wd6zOMJVOvC75PB9D/items?format=json&clean=true"
+APIFY_TOKEN = os.environ["APIFY_TOKEN"]
+ACTOR_ID = "WI0tj4Ieb5Kq458gB"
 
-# Email config from GitHub Secrets
 GMAIL_USER = os.environ["GMAIL_USER"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
-# -------------------------------
-# FUNCTIONS
-# -------------------------------
+
+# -----------------------------
+# APIFY SCRAPER
+# -----------------------------
 
 def fetch_posts(profile_url):
-    """Fetch posts for a given LinkedIn profile from Apify dataset"""
-    url = DATASET_URL_PATTERN.format(profile=profile_url)
-    resp = requests.get(url)
-    resp.raise_for_status()
-    return resp.json()
 
-def summarize_posts(data):
-    """Aggregate posts and classify as Quote/Repost/Original"""
-    total_posts = len(data)
-    summary = []
-    for post in data:
-        is_quote = post.get("commentsCount", 0) > 0 and post.get("sharesCount", 0) > 0
-        is_repost = post.get("commentsCount", 0) == 0 and post.get("sharesCount", 0) > 0
+    print(f"Triggering Apify actor for {profile_url}")
 
-        summary.append({
-            "text": post.get("text", ""),
-            "likes": post.get("reactionsCount", 0),
-            "comments": post.get("commentsCount", 0),
-            "reposts": post.get("sharesCount", 0),
-            "type": "Quote Post" if is_quote else "Repost" if is_repost else "Original Post"
-        })
-    return total_posts, summary
+    run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
-def generate_report(profile_summaries):
-    """Generate plain text weekly report"""
+    actor_input = {
+        "profileUrl": profile_url,
+        "maxPosts": 20
+    }
+
+    run = requests.post(run_url, json=actor_input).json()
+    run_id = run["data"]["id"]
+
+    print("Waiting for actor to finish...")
+
+    status = "RUNNING"
+
+    while status in ["RUNNING", "READY"]:
+        time.sleep(10)
+
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+        status_resp = requests.get(status_url).json()
+
+        status = status_resp["data"]["status"]
+        print("Actor status:", status)
+
+    dataset_id = status_resp["data"]["defaultDatasetId"]
+
+    dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=1"
+
+    posts = requests.get(dataset_url).json()
+
+    return posts
+
+
+# -----------------------------
+# FILTER LAST WEEK
+# -----------------------------
+
+def filter_last_week(posts):
+
+    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    filtered = []
+
+    for post in posts:
+
+        date_str = post.get("postedAt")
+        if not date_str:
+            continue
+
+        try:
+            post_date = datetime.fromisoformat(date_str.replace("Z", ""))
+        except:
+            continue
+
+        if post_date > one_week_ago:
+            filtered.append(post)
+
+    return filtered
+
+
+# -----------------------------
+# REPORT GENERATION
+# -----------------------------
+
+def generate_report(profile_posts):
+
     report = "Weekly LinkedIn Activity Report\n\n"
-    for profile, (total_posts, summary) in profile_summaries.items():
-        report += f"Profile: {profile}\nTotal Posts: {total_posts}\n"
-        for i, post in enumerate(summary, 1):
-            report += (f"Post {i} ({post['type']}): Likes={post['likes']}, "
-                       f"Comments={post['comments']}, Reposts={post['reposts']}\n")
-        report += "\n"
+
+    global_top_post = None
+    global_top_profile = None
+
+    for profile, posts in profile_posts.items():
+
+        total_posts = len(posts)
+
+        total_likes = sum(p.get("reactionsCount", 0) for p in posts)
+        total_comments = sum(p.get("commentsCount", 0) for p in posts)
+        total_reposts = sum(p.get("sharesCount", 0) for p in posts)
+
+        report += f"Profile: {profile}\n"
+        report += f"Posts this week: {total_posts}\n\n"
+
+        report += "Total Engagement\n"
+        report += f"Likes: {total_likes}\n"
+        report += f"Comments: {total_comments}\n"
+        report += f"Reposts: {total_reposts}\n\n"
+
+        if posts:
+
+            top_post = max(posts, key=lambda p: p.get("reactionsCount", 0))
+
+            report += "Top Post\n"
+            report += f"Likes: {top_post.get('reactionsCount',0)} | "
+            report += f"Comments: {top_post.get('commentsCount',0)} | "
+            report += f"Reposts: {top_post.get('sharesCount',0)}\n"
+
+            report += "\n"
+
+            if not global_top_post or top_post.get("reactionsCount",0) > global_top_post.get("reactionsCount",0):
+                global_top_post = top_post
+                global_top_profile = profile
+
+        report += "-----------------------------\n\n"
+
+    if global_top_post:
+
+        report += "🏆 Top Post Across All Profiles\n"
+        report += f"Profile: {global_top_profile}\n"
+        report += f"Likes: {global_top_post.get('reactionsCount',0)}\n"
+        report += f"Comments: {global_top_post.get('commentsCount',0)}\n"
+        report += f"Reposts: {global_top_post.get('sharesCount',0)}\n"
+
     return report
 
+
+# -----------------------------
+# EMAIL
+# -----------------------------
+
 def send_email(report_text):
-    """Send the report via Gmail"""
+
     msg = MIMEMultipart()
+
     msg["From"] = GMAIL_USER
     msg["To"] = GMAIL_USER
     msg["Subject"] = "Weekly LinkedIn Activity Report"
-    
+
     msg.attach(MIMEText(report_text, "plain"))
-    
+
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         server.send_message(msg)
 
-# -------------------------------
+    print("Email sent")
+
+
+# -----------------------------
 # MAIN
-# -------------------------------
+# -----------------------------
 
 def main():
-    profile_summaries = {}
+
+    profile_posts = {}
+
     for profile in PROFILES:
-        print(f"Fetching posts for {profile} ...")
-        try:
-            data = fetch_posts(profile)
-            total_posts, summary = summarize_posts(data)
-            profile_summaries[profile] = (total_posts, summary)
-        except Exception as e:
-            print(f"Error fetching posts for {profile}: {e}")
-    
-    print("Generating report...")
-    report_text = generate_report(profile_summaries)
-    
-    print("Sending email...")
+
+        print(f"Fetching posts for {profile}")
+
+        posts = fetch_posts(profile)
+
+        posts = filter_last_week(posts)
+
+        profile_posts[profile] = posts
+
+    print("Generating report")
+
+    report_text = generate_report(profile_posts)
+
+    print(report_text)
+
+    print("Sending email")
+
     send_email(report_text)
-    print("Report sent successfully!")
+
 
 if __name__ == "__main__":
     main()
