@@ -1,0 +1,36 @@
+name: Weekly LinkedIn Report
+
+on:
+  workflow_dispatch:  # allows manual run
+  schedule:
+    - cron: '0 9 * * 1' # every Monday at 9:00 UTC
+
+jobs:
+  generate-and-send-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openai
+
+      # 4️⃣ Run the report script
+      - name: Run weekly LinkedIn report
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          python report.py
