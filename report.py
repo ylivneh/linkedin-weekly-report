@@ -22,10 +22,10 @@ RECIPIENT_EMAIL = "ylivneh@gmail.com"     # same as your email
 # 1. RUN ACTOR
 # --------------------------
 def run_actor():
-    url = f"https://api.apify.com/v2/actor-runs"
-    headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
-    data = {"actorId": ACTOR_ID}
-    response = requests.post(url, headers=headers, json=data)
+    url = f"https://api.apify.com/v2/actors/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
+    # If you want to pass input, you can include it as JSON here
+    data = {}  # leave empty if using default actor configuration
+    response = requests.post(url, json=data)
     response.raise_for_status()
     run_data = response.json()
     run_id = run_data["data"]["id"]
