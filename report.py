@@ -8,14 +8,13 @@ import openai
 # -------------------------------
 # CONFIG
 # -------------------------------
-# Profiles to report
 PROFILES = [
     "https://www.linkedin.com/company/leumitech",
     "https://www.linkedin.com/company/profile2",
     "https://www.linkedin.com/company/profile3"
 ]
 
-# Apify actor dataset URL pattern (replace with your actor's dataset URL)
+# Apify actor dataset URL pattern (replace YOUR_DATASET_ID with your actor dataset ID)
 DATASET_URL_PATTERN = "https://api.apify.com/v2/datasets/Wd6zOMJVOvC75PB9D/items?format=json&clean=true"
 
 # Email config from GitHub Secrets
@@ -34,8 +33,7 @@ def fetch_posts(profile_url):
     url = DATASET_URL_PATTERN.format(profile=profile_url)
     resp = requests.get(url)
     resp.raise_for_status()
-    data = resp.json()
-    return data
+    return resp.json()
 
 def summarize_posts(data):
     """Aggregate posts, reactions, comments, reposts"""
@@ -51,20 +49,21 @@ def summarize_posts(data):
     return total_posts, summary
 
 def generate_gpt_report(profile_summaries):
-    """Use GPT to create a human-readable weekly report"""
+    """Use GPT to create a human-readable weekly report (OpenAI API v1+)"""
     prompt = "Create a concise weekly LinkedIn activity report:\n\n"
     for profile, (total_posts, summary) in profile_summaries.items():
         prompt += f"Profile: {profile}\nTotal Posts: {total_posts}\n"
         for i, post in enumerate(summary, 1):
             prompt += f"Post {i}: Likes={post['likes']}, Comments={post['comments']}, Reposts={post['reposts']}\n"
         prompt += "\n"
-    
-    response = openai.ChatCompletion.create(
+
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    
+
     report_text = response.choices[0].message.content
     return report_text
 
@@ -84,6 +83,7 @@ def send_email(report_text):
 # -------------------------------
 # MAIN
 # -------------------------------
+
 def main():
     profile_summaries = {}
     for profile in PROFILES:
