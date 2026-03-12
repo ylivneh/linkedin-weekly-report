@@ -3,7 +3,6 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import openai
 
 # -------------------------------
 # CONFIG
@@ -21,9 +20,6 @@ DATASET_URL_PATTERN = "https://api.apify.com/v2/datasets/Wd6zOMJVOvC75PB9D/items
 GMAIL_USER = os.environ["GMAIL_USER"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
-# OpenAI config
-openai.api_key = os.environ["OPENAI_API_KEY"]
-
 # -------------------------------
 # FUNCTIONS
 # -------------------------------
@@ -36,7 +32,7 @@ def fetch_posts(profile_url):
     return resp.json()
 
 def summarize_posts(data):
-    """Aggregate posts, reactions, comments, reposts, classify quote vs repost"""
+    """Aggregate posts and classify as Quote/Repost/Original"""
     total_posts = len(data)
     summary = []
     for post in data:
@@ -52,25 +48,16 @@ def summarize_posts(data):
         })
     return total_posts, summary
 
-def generate_gpt_report(profile_summaries):
-    """Use GPT-3.5-turbo to create a human-readable weekly report"""
-    prompt = "Create a concise weekly LinkedIn activity report:\n\n"
+def generate_report(profile_summaries):
+    """Generate plain text weekly report"""
+    report = "Weekly LinkedIn Activity Report\n\n"
     for profile, (total_posts, summary) in profile_summaries.items():
-        prompt += f"Profile: {profile}\nTotal Posts: {total_posts}\n"
+        report += f"Profile: {profile}\nTotal Posts: {total_posts}\n"
         for i, post in enumerate(summary, 1):
-            prompt += (f"Post {i} ({post['type']}): Likes={post['likes']}, "
+            report += (f"Post {i} ({post['type']}): Likes={post['likes']}, "
                        f"Comments={post['comments']}, Reposts={post['reposts']}\n")
-        prompt += "\n"
-
-    client = openai.OpenAI()
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
-    )
-
-    report_text = response.choices[0].message.content
-    return report_text
+        report += "\n"
+    return report
 
 def send_email(report_text):
     """Send the report via Gmail"""
@@ -100,8 +87,8 @@ def main():
         except Exception as e:
             print(f"Error fetching posts for {profile}: {e}")
     
-    print("Generating report via GPT-3.5-turbo...")
-    report_text = generate_gpt_report(profile_summaries)
+    print("Generating report...")
+    report_text = generate_report(profile_summaries)
     
     print("Sending email...")
     send_email(report_text)
