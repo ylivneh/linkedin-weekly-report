@@ -1,95 +1,106 @@
-# report.py
 import os
 import requests
-from datetime import datetime, timedelta
-import openai
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import openai
 
-# -----------------------------
-# 1️⃣ Configuration
-# -----------------------------
-APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/XXXXXXXX/items?format=json"  # <-- replace with your dataset URL
-
-# GitHub Actions secrets
-openai.api_key = os.environ["OPENAI_API_KEY"]
-GMAIL_USER = os.environ["GMAIL_USER"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-TO_EMAIL = GMAIL_USER  # send to yourself; can change to other email if needed
-
-# -----------------------------
-# 2️⃣ Fetch data from Apify
-# -----------------------------
-response = requests.get(APIFY_DATASET_URL)
-if response.status_code != 200:
-    raise Exception(f"Failed to fetch dataset: {response.status_code}")
-data = response.json()
-
-# -----------------------------
-# 3️⃣ Filter posts from last 7 days
-# -----------------------------
-seven_days_ago = datetime.utcnow() - timedelta(days=7)
-recent_posts = [
-    p for p in data
-    if "timestamp" in p and datetime.fromisoformat(p["timestamp"][:-1]) >= seven_days_ago
+# -------------------------------
+# CONFIG
+# -------------------------------
+# Profiles to report
+PROFILES = [
+    "https://www.linkedin.com/company/leumitech",
+    "https://www.linkedin.com/company/profile2",
+    "https://www.linkedin.com/company/profile3"
 ]
 
-if not recent_posts:
-    report_text = "No LinkedIn posts found in the last 7 days."
-else:
-    # -----------------------------
-    # 4️⃣ Aggregate metrics per profile
-    # -----------------------------
-    report_data = {}
-    for post in recent_posts:
-        profile = post.get("profileName") or post.get("companyName") or "Unknown"
-        if profile not in report_data:
-            report_data[profile] = {"posts": 0, "likes": 0, "comments": 0, "reposts": 0, "top_post": None}
-        report_data[profile]["posts"] += 1
-        report_data[profile]["likes"] += post.get("reactions", 0)
-        report_data[profile]["comments"] += post.get("comments", 0)
-        report_data[profile]["reposts"] += post.get("reposts", 0)
+# Apify actor dataset URL pattern (replace with your actor's dataset URL)
+DATASET_URL_PATTERN = "https://api.apify.com/v2/datasets/Wd6zOMJVOvC75PB9D/items?format=json&clean=true"
 
-        # track top post by likes
-        if (report_data[profile]["top_post"] is None or
-            post.get("reactions", 0) > report_data[profile]["top_post"].get("reactions", 0)):
-            report_data[profile]["top_post"] = post
+# Email config from GitHub Secrets
+GMAIL_USER = os.environ["GMAIL_USER"]
+GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
-    # -----------------------------
-    # 5️⃣ Prepare prompt for GPT
-    # -----------------------------
-    gpt_prompt = "Generate a human-readable weekly LinkedIn engagement report:\n\n"
-    for profile, metrics in report_data.items():
-        gpt_prompt += f"Profile: {profile}\n"
-        gpt_prompt += f"Posts: {metrics['posts']}\n"
-        gpt_prompt += f"Likes: {metrics['likes']}\n"
-        gpt_prompt += f"Comments: {metrics['comments']}\n"
-        gpt_prompt += f"Reposts: {metrics['reposts']}\n"
-        top = metrics["top_post"]
-        if top:
-            snippet = top.get('postText','')[:100].replace('\n',' ')
-            gpt_prompt += f"Top post snippet: \"{snippet}...\" with {top.get('reactions',0)} likes\n"
-        gpt_prompt += "\n"
+# OpenAI config
+openai.api_key = os.environ["OPENAI_API_KEY"]
 
-    # -----------------------------
-    # 6️⃣ Ask GPT to make it human-readable
-    # -----------------------------
-    completion = openai.ChatCompletion.create(
+# -------------------------------
+# FUNCTIONS
+# -------------------------------
+
+def fetch_posts(profile_url):
+    """Fetch posts for a given LinkedIn profile from Apify dataset"""
+    url = DATASET_URL_PATTERN.format(profile=profile_url)
+    resp = requests.get(url)
+    resp.raise_for_status()
+    data = resp.json()
+    return data
+
+def summarize_posts(data):
+    """Aggregate posts, reactions, comments, reposts"""
+    total_posts = len(data)
+    summary = []
+    for post in data:
+        summary.append({
+            "text": post.get("text", ""),
+            "likes": post.get("reactionsCount", 0),
+            "comments": post.get("commentsCount", 0),
+            "reposts": post.get("sharesCount", 0)
+        })
+    return total_posts, summary
+
+def generate_gpt_report(profile_summaries):
+    """Use GPT to create a human-readable weekly report"""
+    prompt = "Create a concise weekly LinkedIn activity report:\n\n"
+    for profile, (total_posts, summary) in profile_summaries.items():
+        prompt += f"Profile: {profile}\nTotal Posts: {total_posts}\n"
+        for i, post in enumerate(summary, 1):
+            prompt += f"Post {i}: Likes={post['likes']}, Comments={post['comments']}, Reposts={post['reposts']}\n"
+        prompt += "\n"
+    
+    response = openai.ChatCompletion.create(
         model="gpt-4",
-        messages=[{"role": "user", "content": gpt_prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5
     )
-    report_text = completion.choices[0].message.content
+    
+    report_text = response.choices[0].message.content
+    return report_text
 
-# -----------------------------
-# 7️⃣ Send email via Gmail
-# -----------------------------
-msg = MIMEText(report_text)
-msg['Subject'] = f"Weekly LinkedIn Report - {datetime.utcnow().date()}"
-msg['From'] = GMAIL_USER
-msg['To'] = TO_EMAIL
+def send_email(report_text):
+    """Send the report via Gmail"""
+    msg = MIMEMultipart()
+    msg["From"] = GMAIL_USER
+    msg["To"] = GMAIL_USER
+    msg["Subject"] = "Weekly LinkedIn Activity Report"
+    
+    msg.attach(MIMEText(report_text, "plain"))
+    
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
 
-with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-    server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-    server.send_message(msg)
+# -------------------------------
+# MAIN
+# -------------------------------
+def main():
+    profile_summaries = {}
+    for profile in PROFILES:
+        print(f"Fetching posts for {profile} ...")
+        try:
+            data = fetch_posts(profile)
+            total_posts, summary = summarize_posts(data)
+            profile_summaries[profile] = (total_posts, summary)
+        except Exception as e:
+            print(f"Error fetching posts for {profile}: {e}")
+    
+    print("Generating report via GPT...")
+    report_text = generate_gpt_report(profile_summaries)
+    
+    print("Sending email...")
+    send_email(report_text)
+    print("Report sent successfully!")
 
-print("Weekly LinkedIn report sent successfully!")
+if __name__ == "__main__":
+    main()
