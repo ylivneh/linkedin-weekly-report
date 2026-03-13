@@ -227,29 +227,50 @@ Weekly LinkedIn summary data:
         }
     }
 
-    response = requests.post(
-        "https://api.openai.com/v1/responses",
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json=payload,
-        timeout=180
-    )
-    response.raise_for_status()
-    data = response.json()
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    output_text = data.get("output_text")
-    if not output_text:
-        raise RuntimeError("OpenAI response did not include output_text")
+    max_attempts = 6
+    base_delay = 5
 
-    report = json.loads(output_text)
+    for attempt in range(1, max_attempts + 1):
+        response = requests.post(
+            "https://api.openai.com/v1/responses",
+            headers=headers,
+            json=payload,
+            timeout=180
+        )
 
-    with open(REPORT_JSON_FILE, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
+        if response.status_code == 429:
+            wait_time = base_delay * (2 ** (attempt - 1))
+            print(f"OpenAI rate limited (attempt {attempt}/{max_attempts}). Waiting {wait_time}s...")
+            if attempt == max_attempts:
+                print("OpenAI response body:", response.text)
+                response.raise_for_status()
+            time.sleep(wait_time)
+            continue
 
-    return report
+        if response.status_code >= 400:
+            print("OpenAI error response:", response.text)
+            response.raise_for_status()
 
+        data = response.json()
+
+        output_text = data.get("output_text")
+        if not output_text:
+            print("Unexpected OpenAI response:", json.dumps(data, ensure_ascii=False, indent=2))
+            raise RuntimeError("OpenAI response did not include output_text")
+
+        report = json.loads(output_text)
+
+        with open(REPORT_JSON_FILE, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        return report
+
+    raise RuntimeError("OpenAI call failed after retries")
 
 def render_html_email(report: dict) -> str:
     body = []
