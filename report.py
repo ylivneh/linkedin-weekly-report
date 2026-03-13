@@ -399,7 +399,13 @@ def main():
     dataset_id = wait_for_run(run_id)
     raw_data = download_dataset(dataset_id)
     summary_payload = build_summary_payload(raw_data)
-    report = call_openai(summary_payload)
+
+    try:
+        report = call_openai(summary_payload)
+    except Exception as e:
+        print("OpenAI report generation failed:", str(e))
+        report = build_fallback_report(summary_payload)
+
     send_email(report)
     print("Done")
 
