@@ -1,0 +1,80 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_subject": {
+      "type": "string"
+    },
+    "executive_summary": {
+      "type": "string"
+    },
+    "competitive_snapshot": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": { "type": "string" },
+          "posts_count": { "type": "number" },
+          "total_engagement": { "type": "number" },
+          "avg_engagement_per_post": { "type": "number" },
+          "positioning_takeaway": { "type": "string" }
+        },
+        "required": [
+          "company",
+          "posts_count",
+          "total_engagement",
+          "avg_engagement_per_post",
+          "positioning_takeaway"
+        ]
+      }
+    },
+    "theme_analysis": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": { "type": "string" },
+          "themes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["company", "themes"]
+      }
+    },
+    "top_posts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": { "type": "string" },
+          "post_date": { "type": "string" },
+          "engagement": { "type": "number" },
+          "summary": { "type": "string" },
+          "url": { "type": "string" }
+        },
+        "required": ["company", "post_date", "engagement", "summary", "url"]
+      }
+    },
+    "bd_signals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "email_subject",
+    "executive_summary",
+    "competitive_snapshot",
+    "theme_analysis",
+    "top_posts",
+    "bd_signals",
+    "recommended_actions"
+  ]
+}
