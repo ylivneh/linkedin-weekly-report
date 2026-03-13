@@ -340,11 +340,22 @@ Weekly LinkedIn summary data:
             response.raise_for_status()
 
         data = response.json()
+
         output_text = data.get("output_text")
+        if not output_text:
+            for item in data.get("output", []):
+                if item.get("type") != "message":
+                    continue
+                for content in item.get("content", []):
+                    if content.get("type") == "output_text" and content.get("text"):
+                        output_text = content["text"]
+                        break
+                if output_text:
+                    break
 
         if not output_text:
             print("Unexpected OpenAI response:", json.dumps(data, ensure_ascii=False, indent=2))
-            raise RuntimeError("OpenAI response did not include output_text")
+            raise RuntimeError("OpenAI response did not include output text")
 
         report = json.loads(output_text)
         save_json(REPORT_JSON_FILE, report)
@@ -352,7 +363,6 @@ Weekly LinkedIn summary data:
         return report
 
     raise RuntimeError("OpenAI call failed after retries")
-
 
 def build_fallback_report(summary_payload: dict) -> dict:
     snapshot = []
