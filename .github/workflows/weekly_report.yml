@@ -1,21 +1,15 @@
 name: LinkedIn Weekly Report
 
 on:
-
   schedule:
-    - cron: "0 8 * * 1"   # every Monday 08:00 UTC
-
-  workflow_dispatch:      # allows manual run
-
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
 
 jobs:
-
   generate-and-send-report:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -25,12 +19,15 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install requests
+        run: pip install -r requirements.txt
 
-      - name: Run report script
+      - name: Run report
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_TASK_ID: ${{ secrets.APIFY_TASK_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: |
-          python report.py
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          OPENAI_MODEL: gpt-5.4
+        run: python report.py
