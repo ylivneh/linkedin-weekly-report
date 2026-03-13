@@ -109,8 +109,7 @@ def normalize_post(item: dict) -> dict:
     shares = int(engagement.get("shares", 0) or 0)
 
     content = (item.get("content") or "").strip()
-    excerpt = content[:700] + ("..." if len(content) > 700 else "")
-
+    excerpt = content[:300] + ("..." if len(content) > 300 else "")
     return {
         "company": author.get("name", "Unknown"),
         "post_date": posted_at.get("date", ""),
