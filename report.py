@@ -113,31 +113,44 @@ def create_csv(data):
 
     for item in data:
 
+        if item.get("type") != "post":
+            continue
+
         rows.append({
-
-            "Company": item.get("companyName"),
-
-            "Post Date": item.get("postedAt"),
-
-            "Reactions": item.get("reactionsCount", 0),
-
-            "Comments": item.get("commentsCount", 0),
-
-            "Post URL": item.get("postUrl"),
-
-            "Text": item.get("text", "").replace("\n"," ")
-
+            "Company": item.get("author", {}).get("name"),
+            "Post Date": item.get("postedAt", {}).get("date"),
+            "Reactions": item.get("engagement", {}).get("likes", 0),
+            "Comments": item.get("engagement", {}).get("comments", 0),
+            "Shares": item.get("engagement", {}).get("shares", 0),
+            "Post URL": item.get("linkedinUrl"),
+            "Text": item.get("content","").replace("\n"," ")
         })
+
+    rows = sorted(
+        rows,
+        key=lambda x: x["Reactions"] + x["Comments"],
+        reverse=True
+    )
 
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
 
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "Company",
+                "Post Date",
+                "Reactions",
+                "Comments",
+                "Shares",
+                "Post URL",
+                "Text"
+            ]
+        )
 
         writer.writeheader()
-
         writer.writerows(rows)
 
-    print("CSV report created")
+    print("CSV report created with", len(rows), "posts")
 
     return OUTPUT_CSV
 
