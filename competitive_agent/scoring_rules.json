@@ -1,0 +1,8 @@
+{
+  "engagement_formula": {
+    "likes": 1.0,
+    "comments": 2.0,
+    "shares": 2.5
+  },
+  "top_posts_per_company": 3
+}
