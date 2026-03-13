@@ -26,9 +26,11 @@ OUTPUT_CSV = "linkedin_report.csv"
 
 def run_actor():
 
-    url = f"https://api.apify.com/v2/actors/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
+    TASK_ID = "VxHAR6QahT7rZQVuW"
 
-    print("Starting Apify actor...")
+    url = f"https://api.apify.com/v2/actor-tasks/{TASK_ID}/runs?token={APIFY_TOKEN}"
+
+    print("Starting Apify task...")
 
     response = requests.post(url)
 
@@ -38,7 +40,7 @@ def run_actor():
 
     run_id = run["id"]
 
-    print("Actor run started:", run_id)
+    print("Run started:", run_id)
 
     return run_id
 
