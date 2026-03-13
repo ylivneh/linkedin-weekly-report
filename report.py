@@ -350,7 +350,50 @@ def send_email(report: dict):
         smtp.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
         smtp.send_message(msg)
 
+def build_fallback_report(summary_payload: dict) -> dict:
+    snapshot = []
+    for company in summary_payload["companies"]:
+        snapshot.append(
+            f"{company['company']}: {company['posts_count']} posts, "
+            f"{company['total_engagement']} total engagement, "
+            f"{company['avg_engagement_per_post']} avg/post"
+        )
 
+    return {
+        "email_subject": "Weekly LinkedIn Competitive Report - Fallback Summary",
+        "executive_summary": "OpenAI report generation was rate-limited, so this fallback summary was generated from the normalized data.",
+        "competitive_snapshot": [
+            {
+                "company": c["company"],
+                "posts_count": c["posts_count"],
+                "total_engagement": c["total_engagement"],
+                "avg_engagement_per_post": c["avg_engagement_per_post"],
+                "positioning_takeaway": "Fallback summary only."
+            }
+            for c in summary_payload["companies"]
+        ],
+        "theme_analysis": [
+            {"company": c["company"], "themes": c["top_themes"]}
+            for c in summary_payload["companies"]
+        ],
+        "top_posts": [
+            {
+                "company": c["company"],
+                "post_date": p["post_date"],
+                "engagement": p["total_engagement"],
+                "summary": p["content_excerpt"][:140],
+                "url": p["post_url"]
+            }
+            for c in summary_payload["companies"]
+            for p in c["top_posts"][:1]
+        ],
+        "bd_signals": snapshot,
+        "recommended_actions": [
+            "Re-run the workflow once OpenAI rate limits reset.",
+            "Reduce payload size or add stronger retry logic."
+        ]
+    }
+    
 def main():
     run_id = run_apify_task()
     dataset_id = wait_for_run(run_id)
