@@ -7,110 +7,195 @@ import smtplib
 from email.message import EmailMessage
 
 # --------------------------
-# CONFIGURATION
+# CONFIG
 # --------------------------
-APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
-ACTOR_ID = "WI0tj4Ieb5Kq458gB"  
-OUTPUT_FILE_JSON = "linkedin_data.json"
-OUTPUT_FILE_CSV = "linkedin_report.csv"
 
-SENDER_EMAIL = "ylivneh@gmail.com"        # your Gmail address
-SENDER_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
-RECIPIENT_EMAIL = "ylivneh@gmail.com"     # same as your email
+APIFY_TOKEN = os.environ["APIFY_TOKEN"]
+ACTOR_ID = "WI0tj4Ieb5Kq458gB"
+
+SENDER_EMAIL = "ylivneh@gmail.com"
+SENDER_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
+RECIPIENT_EMAIL = "ylivneh@gmail.com"
+
+OUTPUT_JSON = "linkedin_data.json"
+OUTPUT_CSV = "linkedin_report.csv"
 
 # --------------------------
-# 1. RUN ACTOR
+# RUN ACTOR
 # --------------------------
+
 def run_actor():
+
     url = f"https://api.apify.com/v2/actors/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
-    # If you want to pass input, you can include it as JSON here
-    data = {}  # leave empty if using default actor configuration
-    response = requests.post(url, json=data)
+
+    print("Starting Apify actor...")
+
+    response = requests.post(url)
+
     response.raise_for_status()
-    run_data = response.json()
-    run_id = run_data["data"]["id"]
-    print(f"Actor run started: {run_id}")
+
+    run = response.json()["data"]
+
+    run_id = run["id"]
+
+    print("Actor run started:", run_id)
+
     return run_id
 
+
 # --------------------------
-# 2. WAIT FOR ACTOR TO FINISH
+# WAIT FOR FINISH
 # --------------------------
-def wait_for_completion(run_id):
-    url = f"https://api.apify.com/v2/actor-runs/{run_id}"
-    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+
+def wait_for_actor(run_id):
+
+    url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+
     print("Waiting for actor to finish...")
+
     while True:
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        run_info = resp.json()["data"]
-        status = run_info["status"]
+
+        r = requests.get(url)
+
+        r.raise_for_status()
+
+        data = r.json()["data"]
+
+        status = data["status"]
+
+        print("Status:", status)
+
         if status in ["SUCCEEDED", "FAILED", "ABORTED"]:
-            print(f"Actor finished with status: {status}")
+
             if status != "SUCCEEDED":
-                raise RuntimeError(f"Actor run did not succeed: {status}")
-            break
+
+                raise Exception("Actor failed")
+
+            dataset_id = data["defaultDatasetId"]
+
+            return dataset_id
+
         time.sleep(10)
 
+
 # --------------------------
-# 3. DOWNLOAD DATASET
+# DOWNLOAD DATASET
 # --------------------------
-def download_dataset(run_id, output_json=OUTPUT_FILE_JSON):
-    url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?format=json"
-    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"Dataset saved to {output_json}")
+
+def download_dataset(dataset_id):
+
+    url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={APIFY_TOKEN}"
+
+    r = requests.get(url)
+
+    r.raise_for_status()
+
+    data = r.json()
+
+    with open(OUTPUT_JSON, "w") as f:
+
+        json.dump(data, f, indent=2)
+
+    print("Dataset downloaded:", len(data), "posts")
+
     return data
 
+
 # --------------------------
-# 4. GENERATE CSV REPORT
+# CREATE CSV REPORT
 # --------------------------
-def generate_csv_report(data, output_csv=OUTPUT_FILE_CSV):
+
+def create_csv(data):
+
     rows = []
+
     for item in data:
-        row = {
-            "postUrl": item.get("postUrl"),
-            "author": item.get("authorName"),
-            "date": item.get("postedAt"),
-            "reactionsCount": item.get("reactionsCount", 0),
-            "commentsCount": item.get("commentsCount", 0),
-            "content": item.get("content", "").replace("\n", " ")
-        }
-        rows.append(row)
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+
+        rows.append({
+
+            "Company": item.get("companyName"),
+
+            "Post Date": item.get("postedAt"),
+
+            "Reactions": item.get("reactionsCount", 0),
+
+            "Comments": item.get("commentsCount", 0),
+
+            "Post URL": item.get("postUrl"),
+
+            "Text": item.get("text", "").replace("\n"," ")
+
+        })
+
+    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
+
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+
         writer.writeheader()
+
         writer.writerows(rows)
-    print(f"CSV report generated: {output_csv}")
-    return output_csv
+
+    print("CSV report created")
+
+    return OUTPUT_CSV
+
 
 # --------------------------
-# 5. SEND EMAIL
+# SEND EMAIL
 # --------------------------
-def send_email(file_path, subject="Weekly LinkedIn Report"):
+
+def send_email(file):
+
     msg = EmailMessage()
-    msg["Subject"] = subject
+
+    msg["Subject"] = "Weekly LinkedIn Activity Report"
+
     msg["From"] = SENDER_EMAIL
+
     msg["To"] = RECIPIENT_EMAIL
-    msg.set_content("Attached is this week's LinkedIn posts report.")
-    with open(file_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(file_path)
-    msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
+
+    msg.set_content("Attached is the weekly LinkedIn posts report.")
+
+    with open(file, "rb") as f:
+
+        msg.add_attachment(
+
+            f.read(),
+
+            maintype="application",
+
+            subtype="csv",
+
+            filename=file
+
+        )
+
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+
         smtp.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
+
         smtp.send_message(msg)
-    print(f"Email sent to {RECIPIENT_EMAIL}")
+
+    print("Email sent")
+
 
 # --------------------------
-# MAIN FLOW
+# MAIN
 # --------------------------
-if __name__ == "__main__":
+
+def main():
+
     run_id = run_actor()
-    wait_for_completion(run_id)
-    data = download_dataset(run_id)
-    csv_file = generate_csv_report(data)
+
+    dataset_id = wait_for_actor(run_id)
+
+    data = download_dataset(dataset_id)
+
+    csv_file = create_csv(data)
+
     send_email(csv_file)
+
+
+if __name__ == "__main__":
+
+    main()
