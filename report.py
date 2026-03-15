@@ -479,7 +479,8 @@ def send_email(report: dict):
     msg = EmailMessage()
     msg["Subject"] = report["email_subject"]
     msg["From"] = SENDER_EMAIL
-    msg["To"] = RECIPIENT_EMAIL
+    recipients = [x.strip() for x in RECIPIENT_EMAIL.split(",")]
+    msg["To"] = ", ".join(recipients)
 
     plain = "\n".join([
         report["email_subject"],
@@ -499,8 +500,7 @@ def send_email(report: dict):
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
-
+        smtp.sendmail(SENDER_EMAIL, recipients, msg.as_string())
     print("Email sent")
 
 
