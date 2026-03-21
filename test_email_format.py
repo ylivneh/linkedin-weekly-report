@@ -61,9 +61,9 @@ def render_html_email(report: dict) -> str:
         body.append("<br/>")
 
     # Add company summary table
-    body.append("<h3>סיכום חברות</h3>")
+    body.append("<h3>סיכום שבועי</h3>")
     body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>סיכום עמדה</th></tr>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>reactions</th><th>ממוצע לפוסט</th><th>תובנות</th></tr>")
 
     for company, posts in companies_data.items():
         posts_count = len(posts)
@@ -90,8 +90,7 @@ def render_html_email(report: dict) -> str:
     body.append("</table>")
     body.append("<br/>")
 
-    body.append("<h3>סיכום שבועי</h3>")
-    # Handle both string and list formats for executive_summary
+    # Handle both string and list formats for executive_summary (no section title)
     if isinstance(report.get("executive_summary"), list):
         body.append("<ul>")
         for item in report["executive_summary"]:
@@ -242,7 +241,7 @@ def main():
         plain_lines.append("")
 
     # Add company summary
-    plain_lines.append("סיכום חברות")
+    plain_lines.append("סיכום שבועי")
     for company, posts in companies_data.items():
         posts_count = len(posts)
         total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
@@ -253,13 +252,12 @@ def main():
                 takeaway = theme_item.get("positioning_takeaway", "")
                 break
         plain_lines.append(
-            f"{company}: {posts_count} פוסטים, סך הערכת {total_engagement}, "
+            f"{company}: {posts_count} פוסטים, reactions {total_engagement}, "
             f"ממוצע {avg_engagement} - {takeaway}"
         )
     plain_lines.append("")
 
-    # Add executive summary (handle both list and string)
-    plain_lines.append("סיכום שבועי")
+    # Add executive summary bullets (no section header)
     if isinstance(sample_report.get("executive_summary"), list):
         plain_lines.extend([f"• {item}" for item in sample_report["executive_summary"]])
     else:
