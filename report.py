@@ -170,9 +170,24 @@ def normalize_post(item: dict) -> dict:
         author.get("name", "Unknown")
     )
 
+    # Handle multiple engagement formats
     likes = int(engagement.get("likes", 0) or 0)
     comments = int(engagement.get("comments", 0) or 0)
     shares = int(engagement.get("shares", 0) or 0)
+
+    # Reactions can be: a count, a list, or a separate field
+    reactions = engagement.get("reactions", 0)
+    if isinstance(reactions, list):
+        reactions = len(reactions)
+    else:
+        reactions = int(reactions or 0)
+
+    reactions_count = int(engagement.get("reactionsCount", reactions) or reactions)
+
+    # If traditional engagement is 0, use reactions count as total
+    total_engagement = likes + comments + shares
+    if total_engagement == 0 and reactions_count > 0:
+        total_engagement = reactions_count
 
     content = (item.get("content") or "").strip()
     excerpt = content[:300] + ("..." if len(content) > 300 else "")
@@ -186,7 +201,7 @@ def normalize_post(item: dict) -> dict:
         "likes": likes,
         "comments": comments,
         "shares": shares,
-        "total_engagement": likes + comments + shares,
+        "total_engagement": total_engagement,
         "theme_hints": extract_theme_hints(content),
     }
 
@@ -203,9 +218,20 @@ def build_summary_payload(raw_data: list) -> dict:
 
     posts = [normalize_post(x) for x in raw_data if x.get("type") == "post"]
 
+    # Debug: log first post's engagement structure and company matching
+    if raw_data:
+        print(f"DEBUG: Total items in raw_data: {len(raw_data)}")
+        print(f"DEBUG: First item type: {raw_data[0].get('type', 'N/A')}")
+        print(f"DEBUG: First item engagement data: {raw_data[0].get('engagement', {})}")
+    if posts:
+        print(f"DEBUG: Total posts found after filtering: {len(posts)}")
+        print(f"DEBUG: First post company_key: {posts[0]['company_key']}, company: {posts[0]['company']}")
+        print(f"DEBUG: First post engagement: {posts[0]['total_engagement']}")
+
     grouped = defaultdict(list)
     for post in posts:
         grouped[post["company_key"]].append(post)
+        print(f"DEBUG: Grouped post - company_key: {post['company_key']}, engagement: {post['total_engagement']}")
 
     companies = []
 
