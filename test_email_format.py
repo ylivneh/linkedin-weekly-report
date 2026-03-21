@@ -63,18 +63,18 @@ def render_html_email(report: dict) -> str:
     # Add company summary table
     body.append("<h3>סיכום חברות</h3>")
     body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>הערה</th></tr>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>Takeaway</th></tr>")
 
     for company, posts in companies_data.items():
         posts_count = len(posts)
         total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
         avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
 
-        # Extract positioning takeaway if available
+        # Extract positioning takeaway from theme_analysis
         takeaway = ""
         for theme_item in report.get("theme_analysis", []):
             if theme_item.get("company") == company:
-                takeaway = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                takeaway = theme_item.get("positioning_takeaway", "")
                 break
 
         body.append(
@@ -91,7 +91,14 @@ def render_html_email(report: dict) -> str:
     body.append("<br/>")
 
     body.append("<h3>סיכום שבועי</h3>")
-    body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
+    # Handle both string and list formats for executive_summary
+    if isinstance(report.get("executive_summary"), list):
+        body.append("<ul>")
+        for item in report["executive_summary"]:
+            body.append(f"<li>{html.escape(item)}</li>")
+        body.append("</ul>")
+    else:
+        body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
     html_template = """<html>
   <body style="font-family: Arial, Helvetica, sans-serif; color: #222; line-height: 1.5;">
@@ -104,7 +111,11 @@ def render_html_email(report: dict) -> str:
 # Sample report data matching the new schema
 sample_report = {
     "email_subject": "דוח LinkedIn תחרותי שבועי - 21 במרץ 2026",
-    "executive_summary": "LeumiTech שמר על היתרון התחרותי עם 11 פוסטים וסך של 48 הערכות. Poalim Hi-Tech הגביר את הפעילות עם 8 פוסטים ו-47 הערכות, במיוחד בתוכן הקשור ל-AI ו-fintech. DiscountTech הוא פחות פעיל עם 5 פוסטים בלבד.",
+    "executive_summary": [
+        "LeumiTech maintained competitive advantage with consistent posting and strong engagement across innovation and fintech topics.",
+        "Poalim Hi-Tech increased activity with AI and fintech focus, showing growth in audience reach.",
+        "DiscountTech showed limited activity this week, creating a visibility gap versus peers."
+    ],
     "competitive_snapshot": [
         {
             "company": "LeumiTech",
@@ -160,15 +171,18 @@ sample_report = {
     "theme_analysis": [
         {
             "company": "LeumiTech",
-            "themes": ["Fintech", "Banking / Financial Services", "Innovation"]
+            "themes": ["Fintech", "Banking / Financial Services", "Innovation"],
+            "positioning_takeaway": "Most active and most effective overall. Content is reinforcing LeumiTech's position as a visible, credible participant in the Israeli tech ecosystem."
         },
         {
             "company": "Poalim Hi-Tech",
-            "themes": ["AI", "Fintech", "VC / Venture"]
+            "themes": ["AI", "Fintech", "VC / Venture"],
+            "positioning_takeaway": "Active but uneven. Performance appears concentrated in high-engagement posts, suggesting strong market resonance on AI topics."
         },
         {
             "company": "DiscountTech",
-            "themes": ["Insurance Tech", "Innovation"]
+            "themes": ["Insurance Tech", "Innovation"],
+            "positioning_takeaway": "Low activity this week creates a visibility gap versus peers and removes them from near-term ecosystem conversation."
         }
     ]
 }
@@ -233,21 +247,23 @@ def main():
         posts_count = len(posts)
         total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
         avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
-        themes = ""
+        takeaway = ""
         for theme_item in sample_report.get("theme_analysis", []):
             if theme_item.get("company") == company:
-                themes = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                takeaway = theme_item.get("positioning_takeaway", "")
                 break
         plain_lines.append(
             f"{company}: {posts_count} פוסטים, סך הערכת {total_engagement}, "
-            f"ממוצע {avg_engagement} - {themes}"
+            f"ממוצע {avg_engagement} - {takeaway}"
         )
     plain_lines.append("")
 
-    plain_lines.extend([
-        "סיכום שבועי",
-        sample_report["executive_summary"],
-    ])
+    # Add executive summary (handle both list and string)
+    plain_lines.append("סיכום שבועי")
+    if isinstance(sample_report.get("executive_summary"), list):
+        plain_lines.extend([f"• {item}" for item in sample_report["executive_summary"]])
+    else:
+        plain_lines.append(sample_report.get("executive_summary", ""))
 
     plain_text = "\n".join(plain_lines)
 

@@ -6,7 +6,8 @@
       "type": "string"
     },
     "executive_summary": {
-      "type": "string"
+      "type": "array",
+      "items": { "type": "string" }
     },
     "competitive_snapshot": {
       "type": "array",
@@ -44,9 +45,10 @@
           "themes": {
             "type": "array",
             "items": { "type": "string" }
-          }
+          },
+          "positioning_takeaway": { "type": "string" }
         },
-        "required": ["company", "themes"]
+        "required": ["company", "themes", "positioning_takeaway"]
       }
     }
   },

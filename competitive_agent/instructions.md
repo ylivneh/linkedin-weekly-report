@@ -21,7 +21,13 @@ Rules:
 - If the data is thin or uneven, say so clearly
 - Use only the provided data
 
+Positioning Takeaway Guidance:
+- For each company, provide a 1-2 sentence intelligent summary of their competitive position
+- Focus on activity levels, engagement effectiveness, market resonance, and strategic implications
+- Include specific observations about their content themes and audience engagement patterns
+- Flag visibility gaps, competitive advantages, or emerging strengths
+
 Output goals:
-- A short executive summary
-- A detailed list of top posts from all companies (competitive snapshot)
-- Theme analysis by company
+- A detailed list of top posts from all companies (competitive snapshot) with engagement metrics
+- Theme analysis by company with intelligent positioning takeaways
+- An executive summary as bullet points covering key findings and implications

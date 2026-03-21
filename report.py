@@ -369,9 +369,24 @@ def build_fallback_report(summary_payload: dict) -> dict:
     theme_analysis = []
 
     for company in summary_payload["companies"]:
+        # Generate positioning takeaway from stats
+        posts_count = company["posts_count"]
+        total_engagement = company["total_engagement"]
+        avg_engagement = company["avg_engagement_per_post"]
+
+        if posts_count == 0:
+            takeaway = "No activity this week."
+        elif avg_engagement > 50:
+            takeaway = f"Highly active with strong engagement ({avg_engagement:.1f} avg/post)."
+        elif avg_engagement > 30:
+            takeaway = f"Moderately active with decent engagement ({avg_engagement:.1f} avg/post)."
+        else:
+            takeaway = f"Low activity level ({posts_count} posts, {avg_engagement:.1f} avg/post)."
+
         theme_analysis.append({
             "company": company["company"],
-            "themes": company["top_themes"]
+            "themes": company["top_themes"],
+            "positioning_takeaway": takeaway
         })
 
         for p in company["top_posts"]:
@@ -391,7 +406,11 @@ def build_fallback_report(summary_payload: dict) -> dict:
 
     report = {
         "email_subject": "דוח LinkedIn תחרותי שבועי - סיכום חלופי",
-        "executive_summary": "כישלון דור דוח OpenAI, לכן סיכום חלופי זה נוצר מהנתונים המנורמלים. אנא נסה שוב כשהטוקן מתוקן.",
+        "executive_summary": [
+            "כישלון דור דוח OpenAI, לכן סיכום חלופי זה נוצר מהנתונים המנורמלים.",
+            "אנא נסה שוב כשהטוקן מתוקן.",
+            "טבלת הפוסטים והנושאים עדיין זמינים למעלה."
+        ],
         "competitive_snapshot": competitive_snapshot,
         "theme_analysis": theme_analysis
     }
@@ -457,18 +476,18 @@ def render_html_email(report: dict) -> str:
     # Add company summary table
     body.append("<h3>סיכום חברות</h3>")
     body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>הערה</th></tr>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>Takeaway</th></tr>")
 
     for company, posts in companies_data.items():
         posts_count = len(posts)
         total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
         avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
 
-        # Extract positioning takeaway if available
+        # Extract positioning takeaway from theme_analysis
         takeaway = ""
         for theme_item in report.get("theme_analysis", []):
             if theme_item.get("company") == company:
-                takeaway = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                takeaway = theme_item.get("positioning_takeaway", "")
                 break
 
         body.append(
@@ -485,7 +504,14 @@ def render_html_email(report: dict) -> str:
     body.append("<br/>")
 
     body.append("<h3>סיכום שבועי</h3>")
-    body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
+    # Handle both string and list formats for executive_summary
+    if isinstance(report.get("executive_summary"), list):
+        body.append("<ul>")
+        for item in report["executive_summary"]:
+            body.append(f"<li>{html.escape(item)}</li>")
+        body.append("</ul>")
+    else:
+        body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
     try:
         template = load_text("competitive_agent/email_template.html")
@@ -535,21 +561,23 @@ def send_email(report: dict):
         posts_count = len(posts)
         total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
         avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
-        themes = ""
+        takeaway = ""
         for theme_item in report.get("theme_analysis", []):
             if theme_item.get("company") == company:
-                themes = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                takeaway = theme_item.get("positioning_takeaway", "")
                 break
         plain_lines.append(
             f"{company}: {posts_count} פוסטים, סך הערכת {total_engagement}, "
-            f"ממוצע {avg_engagement} - {themes}"
+            f"ממוצע {avg_engagement} - {takeaway}"
         )
     plain_lines.append("")
 
-    plain_lines.extend([
-        "סיכום שבועי",
-        report["executive_summary"],
-    ])
+    # Add executive summary (handle both list and string)
+    plain_lines.append("סיכום שבועי")
+    if isinstance(report.get("executive_summary"), list):
+        plain_lines.extend([f"• {item}" for item in report["executive_summary"]])
+    else:
+        plain_lines.append(report.get("executive_summary", ""))
 
     plain = "\n".join(plain_lines)
 
