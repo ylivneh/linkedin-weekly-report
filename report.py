@@ -407,32 +407,54 @@ def render_html_email(report: dict) -> str:
     body.append(f"<h2>{html.escape(report['email_subject'])}</h2>")
 
     body.append("<h3>תמונת מצב תחרותית</h3>")
-    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>תאריך</th><th>תוכן</th><th>לייקים</th><th>תגובות</th><th>שיתופים</th><th>סך הערכת</th></tr>")
-    for item in report["competitive_snapshot"]:
-        url_link = f"<a href=\"{html.escape(item.get('url', '#'))}\">קישור</a>" if item.get('url') else ""
+
+    # Get unique companies in order they appear
+    companies_data = {}
+    for post in report["competitive_snapshot"]:
+        company = post["company"]
+        if company not in companies_data:
+            companies_data[company] = []
+        companies_data[company].append(post)
+
+    # Render table for each company
+    for company, posts in companies_data.items():
+        body.append(f"<h4>{html.escape(company)}</h4>")
+        body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
+        body.append("<tr><th>תאריך</th><th>נושא</th><th>לייקים</th><th>תגובות</th><th>שיתופים</th></tr>")
+
+        total_likes = 0
+        total_comments = 0
+        total_shares = 0
+
+        for post in posts:
+            url_link = f" <a href=\"{html.escape(post.get('url', '#'))}\">קישור</a>" if post.get('url') else ""
+            body.append(
+                "<tr>"
+                f"<td>{html.escape(str(post['post_date']))}</td>"
+                f"<td>{html.escape(str(post['content_summary']))}{url_link}</td>"
+                f"<td>{html.escape(str(post['likes']))}</td>"
+                f"<td>{html.escape(str(post['comments']))}</td>"
+                f"<td>{html.escape(str(post['shares']))}</td>"
+                "</tr>"
+            )
+            total_likes += post['likes']
+            total_comments += post['comments']
+            total_shares += post['shares']
+
+        # Add total row
         body.append(
-            "<tr>"
-            f"<td>{html.escape(str(item['company']))}</td>"
-            f"<td>{html.escape(str(item['post_date']))}</td>"
-            f"<td>{html.escape(str(item['content_summary']))}{' ' + url_link if url_link else ''}</td>"
-            f"<td>{html.escape(str(item['likes']))}</td>"
-            f"<td>{html.escape(str(item['comments']))}</td>"
-            f"<td>{html.escape(str(item['shares']))}</td>"
-            f"<td>{html.escape(str(item['total_engagement']))}</td>"
+            "<tr style='font-weight: bold;'>"
+            f"<td colspan='1'>סה״כ</td>"
+            f"<td></td>"
+            f"<td>{total_likes}</td>"
+            f"<td>{total_comments}</td>"
+            f"<td>{total_shares}</td>"
             "</tr>"
         )
-    body.append("</table>")
+        body.append("</table>")
+        body.append("<br/>")
 
-    body.append("<h3>ניתוח נושאים</h3><ul>")
-    for item in report["theme_analysis"]:
-        themes = ", ".join(item.get("themes", []))
-        body.append(
-            f"<li><b>{html.escape(item['company'])}</b>: {html.escape(themes)}</li>"
-        )
-    body.append("</ul>")
-
-    body.append("<h3>סיכום ביצועים</h3>")
+    body.append("<h3>סיכום שבועי</h3>")
     body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
     try:
@@ -449,30 +471,40 @@ def send_email(report: dict):
     recipients = [x.strip() for x in RECIPIENT_EMAIL.split(",")]
     msg["To"] = ", ".join(recipients)
 
-    snapshot_lines = []
-    for item in report["competitive_snapshot"]:
-        snapshot_lines.append(
-            f"{item['company']} - {item['post_date']}: {item['content_summary'][:100]} "
-            f"(לייקים: {item['likes']}, תגובות: {item['comments']}, שיתופים: {item['shares']})"
-        )
+    # Build plain text version by company
+    companies_data = {}
+    for post in report["competitive_snapshot"]:
+        company = post["company"]
+        if company not in companies_data:
+            companies_data[company] = []
+        companies_data[company].append(post)
 
-    theme_lines = []
-    for item in report["theme_analysis"]:
-        themes = ", ".join(item.get("themes", []))
-        theme_lines.append(f"{item['company']}: {themes}")
-
-    plain = "\n".join([
+    plain_lines = [
         report["email_subject"],
         "",
         "תמונת מצב תחרותית",
-        *snapshot_lines,
-        "",
-        "ניתוח נושאים",
-        *theme_lines,
-        "",
-        "סיכום ביצועים",
+        ""
+    ]
+
+    for company, posts in companies_data.items():
+        plain_lines.append(company)
+        for post in posts:
+            plain_lines.append(
+                f"  {post['post_date']}: {post['content_summary'][:80]} "
+                f"(לייקים: {post['likes']}, תגובות: {post['comments']}, שיתופים: {post['shares']})"
+            )
+        total_likes = sum(p['likes'] for p in posts)
+        total_comments = sum(p['comments'] for p in posts)
+        total_shares = sum(p['shares'] for p in posts)
+        plain_lines.append(f"  סה״כ: לייקים {total_likes}, תגובות {total_comments}, שיתופים {total_shares}")
+        plain_lines.append("")
+
+    plain_lines.extend([
+        "סיכום שבועי",
         report["executive_summary"],
     ])
+
+    plain = "\n".join(plain_lines)
 
     msg.set_content(plain)
     msg.add_alternative(render_html_email(report), subtype="html")
