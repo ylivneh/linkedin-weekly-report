@@ -365,51 +365,35 @@ Weekly LinkedIn summary data:
     raise RuntimeError("OpenAI call failed after retries")
 
 def build_fallback_report(summary_payload: dict) -> dict:
-    snapshot = []
+    competitive_snapshot = []
     theme_analysis = []
-    top_posts = []
 
     for company in summary_payload["companies"]:
-        snapshot.append(
-            f"{company['company']}: {company['posts_count']} posts, "
-            f"{company['total_engagement']} total engagement, "
-            f"{company['avg_engagement_per_post']} avg/post"
-        )
-
         theme_analysis.append({
             "company": company["company"],
             "themes": company["top_themes"]
         })
 
-        for p in company["top_posts"][:1]:
-            top_posts.append({
+        for p in company["top_posts"]:
+            competitive_snapshot.append({
                 "company": company["company"],
                 "post_date": p["post_date"],
-                "engagement": p["total_engagement"],
-                "summary": p["content_excerpt"][:140],
+                "content_summary": p["content_excerpt"][:200],
+                "likes": p["likes"],
+                "comments": p["comments"],
+                "shares": p["shares"],
+                "total_engagement": p["total_engagement"],
                 "url": p["post_url"]
             })
 
+    # Sort by engagement descending
+    competitive_snapshot.sort(key=lambda x: x["total_engagement"], reverse=True)
+
     report = {
-        "email_subject": "Weekly LinkedIn Competitive Report - Fallback Summary",
-        "executive_summary": "OpenAI report generation failed, so this fallback summary was generated from the normalized data.",
-        "competitive_snapshot": [
-            {
-                "company": c["company"],
-                "posts_count": c["posts_count"],
-                "total_engagement": c["total_engagement"],
-                "avg_engagement_per_post": c["avg_engagement_per_post"],
-                "positioning_takeaway": "Fallback summary only."
-            }
-            for c in summary_payload["companies"]
-        ],
-        "theme_analysis": theme_analysis,
-        "top_posts": top_posts,
-        "bd_signals": snapshot,
-        "recommended_actions": [
-            "Re-run the workflow once OpenAI API quota is available.",
-            "Verify OpenAI billing, credits, and API key project scope."
-        ]
+        "email_subject": "דוח LinkedIn תחרותי שבועי - סיכום חלופי",
+        "executive_summary": "כישלון דור דוח OpenAI, לכן סיכום חלופי זה נוצר מהנתונים המנורמלים. אנא נסה שוב כשהטוקן מתוקן.",
+        "competitive_snapshot": competitive_snapshot,
+        "theme_analysis": theme_analysis
     }
 
     save_json(REPORT_JSON_FILE, report)
@@ -422,25 +406,25 @@ def render_html_email(report: dict) -> str:
 
     body.append(f"<h2>{html.escape(report['email_subject'])}</h2>")
 
-    body.append("<h3>Executive Summary</h3>")
-    body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
-
-    body.append("<h3>Competitive Snapshot</h3>")
-    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse;'>")
-    body.append("<tr><th>Company</th><th>Posts</th><th>Total Engagement</th><th>Avg/Post</th><th>Takeaway</th></tr>")
+    body.append("<h3>תמונת מצב תחרותית</h3>")
+    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
+    body.append("<tr><th>חברה</th><th>תאריך</th><th>תוכן</th><th>לייקים</th><th>תגובות</th><th>שיתופים</th><th>סך הערכת</th></tr>")
     for item in report["competitive_snapshot"]:
+        url_link = f"<a href=\"{html.escape(item.get('url', '#'))}\">קישור</a>" if item.get('url') else ""
         body.append(
             "<tr>"
             f"<td>{html.escape(str(item['company']))}</td>"
-            f"<td>{html.escape(str(item['posts_count']))}</td>"
+            f"<td>{html.escape(str(item['post_date']))}</td>"
+            f"<td>{html.escape(str(item['content_summary']))}{' ' + url_link if url_link else ''}</td>"
+            f"<td>{html.escape(str(item['likes']))}</td>"
+            f"<td>{html.escape(str(item['comments']))}</td>"
+            f"<td>{html.escape(str(item['shares']))}</td>"
             f"<td>{html.escape(str(item['total_engagement']))}</td>"
-            f"<td>{html.escape(str(item['avg_engagement_per_post']))}</td>"
-            f"<td>{html.escape(str(item['positioning_takeaway']))}</td>"
             "</tr>"
         )
     body.append("</table>")
 
-    body.append("<h3>Theme Analysis</h3><ul>")
+    body.append("<h3>ניתוח נושאים</h3><ul>")
     for item in report["theme_analysis"]:
         themes = ", ".join(item.get("themes", []))
         body.append(
@@ -448,25 +432,8 @@ def render_html_email(report: dict) -> str:
         )
     body.append("</ul>")
 
-    body.append("<h3>Top Posts</h3><ul>")
-    for item in report["top_posts"]:
-        body.append(
-            f"<li><b>{html.escape(item['company'])}</b> — {html.escape(item['post_date'])} — "
-            f"Engagement {html.escape(str(item['engagement']))} — "
-            f"{html.escape(item['summary'])} — "
-            f"<a href=\"{html.escape(item['url'])}\">Open post</a></li>"
-        )
-    body.append("</ul>")
-
-    body.append("<h3>BD Signals</h3><ul>")
-    for item in report["bd_signals"]:
-        body.append(f"<li>{html.escape(item)}</li>")
-    body.append("</ul>")
-
-    body.append("<h3>Recommended Actions</h3><ul>")
-    for item in report["recommended_actions"]:
-        body.append(f"<li>{html.escape(item)}</li>")
-    body.append("</ul>")
+    body.append("<h3>סיכום ביצועים</h3>")
+    body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
     try:
         template = load_text("competitive_agent/email_template.html")
@@ -482,17 +449,29 @@ def send_email(report: dict):
     recipients = [x.strip() for x in RECIPIENT_EMAIL.split(",")]
     msg["To"] = ", ".join(recipients)
 
+    snapshot_lines = []
+    for item in report["competitive_snapshot"]:
+        snapshot_lines.append(
+            f"{item['company']} - {item['post_date']}: {item['content_summary'][:100]} "
+            f"(לייקים: {item['likes']}, תגובות: {item['comments']}, שיתופים: {item['shares']})"
+        )
+
+    theme_lines = []
+    for item in report["theme_analysis"]:
+        themes = ", ".join(item.get("themes", []))
+        theme_lines.append(f"{item['company']}: {themes}")
+
     plain = "\n".join([
         report["email_subject"],
         "",
-        "Executive Summary",
+        "תמונת מצב תחרותית",
+        *snapshot_lines,
+        "",
+        "ניתוח נושאים",
+        *theme_lines,
+        "",
+        "סיכום ביצועים",
         report["executive_summary"],
-        "",
-        "BD Signals",
-        *[f"- {x}" for x in report["bd_signals"]],
-        "",
-        "Recommended Actions",
-        *[f"- {x}" for x in report["recommended_actions"]],
     ])
 
     msg.set_content(plain)

@@ -23,7 +23,5 @@ Rules:
 
 Output goals:
 - A short executive summary
-- A company-by-company competitive view
-- Theme analysis
-- BD signals
-- Recommended actions
+- A detailed list of top posts from all companies (competitive snapshot)
+- Theme analysis by company
