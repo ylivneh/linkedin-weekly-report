@@ -63,7 +63,7 @@ def render_html_email(report: dict) -> str:
     # Add company summary table
     body.append("<h3>סיכום חברות</h3>")
     body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>Takeaway</th></tr>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>סיכום עמדה</th></tr>")
 
     for company, posts in companies_data.items():
         posts_count = len(posts)
@@ -112,9 +112,9 @@ def render_html_email(report: dict) -> str:
 sample_report = {
     "email_subject": "דוח LinkedIn תחרותי שבועי - 21 במרץ 2026",
     "executive_summary": [
-        "LeumiTech maintained competitive advantage with consistent posting and strong engagement across innovation and fintech topics.",
-        "Poalim Hi-Tech increased activity with AI and fintech focus, showing growth in audience reach.",
-        "DiscountTech showed limited activity this week, creating a visibility gap versus peers."
+        "לאומיטק שמרה על יתרון תחרותי עם פרסום עקבי והערכת גבוהה בנושאי חדשנות וטכנולוגיה פיננסית.",
+        "פועליםטק הגבירה פעילות עם התמקדות בAI וטכנולוגיה פיננסית, וגדילה בהגעה לקהל.",
+        "דיסקונטק הראתה פעילות מוגבלת השבוע, יוצרת פער נראות מול המתחרים."
     ],
     "competitive_snapshot": [
         {
@@ -172,17 +172,17 @@ sample_report = {
         {
             "company": "LeumiTech",
             "themes": ["Fintech", "Banking / Financial Services", "Innovation"],
-            "positioning_takeaway": "Most active and most effective overall. Content is reinforcing LeumiTech's position as a visible, credible participant in the Israeli tech ecosystem."
+            "positioning_takeaway": "הפעיל ביותר והאפקטיבי ביותר. התוכן מחזק את מיקומה של לאומיטק כשחקן ניראה ומהימן בעקוסיסטם הטכנולוגיה הישראלית."
         },
         {
             "company": "Poalim Hi-Tech",
             "themes": ["AI", "Fintech", "VC / Venture"],
-            "positioning_takeaway": "Active but uneven. Performance appears concentrated in high-engagement posts, suggesting strong market resonance on AI topics."
+            "positioning_takeaway": "פעיל אך לא אחיד. ההצלחה מרוכזת בפוסטים בעלי הערכת גבוהה, מה שמצביע על הד חזק בנושאי AI."
         },
         {
             "company": "DiscountTech",
             "themes": ["Insurance Tech", "Innovation"],
-            "positioning_takeaway": "Low activity this week creates a visibility gap versus peers and removes them from near-term ecosystem conversation."
+            "positioning_takeaway": "פעילות נמוכה השבוע יוצרת פער נראות מול המתחרים ומוציאם מהשיחה הקרובה בעקוסיסטם."
         }
     ]
 }

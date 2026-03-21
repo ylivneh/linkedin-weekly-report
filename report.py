@@ -476,7 +476,7 @@ def render_html_email(report: dict) -> str:
     # Add company summary table
     body.append("<h3>סיכום חברות</h3>")
     body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
-    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>Takeaway</th></tr>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>סיכום עמדה</th></tr>")
 
     for company, posts in companies_data.items():
         posts_count = len(posts)
