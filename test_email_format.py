@@ -60,6 +60,36 @@ def render_html_email(report: dict) -> str:
         body.append("</table>")
         body.append("<br/>")
 
+    # Add company summary table
+    body.append("<h3>סיכום חברות</h3>")
+    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>סך הערכת</th><th>ממוצע לפוסט</th><th>הערה</th></tr>")
+
+    for company, posts in companies_data.items():
+        posts_count = len(posts)
+        total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
+        avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
+
+        # Extract positioning takeaway if available
+        takeaway = ""
+        for theme_item in report.get("theme_analysis", []):
+            if theme_item.get("company") == company:
+                takeaway = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                break
+
+        body.append(
+            "<tr>"
+            f"<td>{html.escape(company)}</td>"
+            f"<td>{posts_count}</td>"
+            f"<td>{total_engagement}</td>"
+            f"<td>{avg_engagement}</td>"
+            f"<td>{html.escape(takeaway)}</td>"
+            "</tr>"
+        )
+
+    body.append("</table>")
+    body.append("<br/>")
+
     body.append("<h3>סיכום שבועי</h3>")
     body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
@@ -169,30 +199,57 @@ def main():
     print("PLAIN TEXT VERSION:")
     print("-" * 80)
 
-    snapshot_lines = []
-    for item in sample_report["competitive_snapshot"]:
-        snapshot_lines.append(
-            f"{item['company']} - {item['post_date']}: {item['content_summary'][:100]} "
-            f"(לייקים: {item['likes']}, תגובות: {item['comments']}, שיתופים: {item['shares']})"
-        )
+    # Get unique companies in order they appear
+    companies_data = {}
+    for post in sample_report["competitive_snapshot"]:
+        company = post["company"]
+        if company not in companies_data:
+            companies_data[company] = []
+        companies_data[company].append(post)
 
-    theme_lines = []
-    for item in sample_report["theme_analysis"]:
-        themes = ", ".join(item.get("themes", []))
-        theme_lines.append(f"{item['company']}: {themes}")
-
-    plain_text = "\n".join([
+    plain_lines = [
         sample_report["email_subject"],
         "",
         "תמונת מצב תחרותית",
-        *snapshot_lines,
-        "",
-        "ניתוח נושאים",
-        *theme_lines,
-        "",
-        "סיכום ביצועים",
+        ""
+    ]
+
+    for company, posts in companies_data.items():
+        plain_lines.append(company)
+        for post in posts:
+            plain_lines.append(
+                f"  {post['post_date']}: {post['content_summary'][:80]} "
+                f"(לייקים: {post['likes']}, תגובות: {post['comments']}, שיתופים: {post['shares']})"
+            )
+        total_likes = sum(p['likes'] for p in posts)
+        total_comments = sum(p['comments'] for p in posts)
+        total_shares = sum(p['shares'] for p in posts)
+        plain_lines.append(f"  סה״כ: לייקים {total_likes}, תגובות {total_comments}, שיתופים {total_shares}")
+        plain_lines.append("")
+
+    # Add company summary
+    plain_lines.append("סיכום חברות")
+    for company, posts in companies_data.items():
+        posts_count = len(posts)
+        total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
+        avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
+        themes = ""
+        for theme_item in sample_report.get("theme_analysis", []):
+            if theme_item.get("company") == company:
+                themes = f"נושאים: {', '.join(theme_item.get('themes', []))}"
+                break
+        plain_lines.append(
+            f"{company}: {posts_count} פוסטים, סך הערכת {total_engagement}, "
+            f"ממוצע {avg_engagement} - {themes}"
+        )
+    plain_lines.append("")
+
+    plain_lines.extend([
+        "סיכום שבועי",
         sample_report["executive_summary"],
     ])
+
+    plain_text = "\n".join(plain_lines)
 
     print(plain_text)
     print("-" * 80)
