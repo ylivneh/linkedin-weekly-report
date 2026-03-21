@@ -6,7 +6,8 @@
       "type": "string"
     },
     "executive_summary": {
-      "type": "string"
+      "type": "array",
+      "items": { "type": "string" }
     },
     "competitive_snapshot": {
       "type": "array",
@@ -15,17 +16,22 @@
         "additionalProperties": false,
         "properties": {
           "company": { "type": "string" },
-          "posts_count": { "type": "number" },
+          "post_date": { "type": "string" },
+          "content_summary": { "type": "string" },
+          "likes": { "type": "number" },
+          "comments": { "type": "number" },
+          "shares": { "type": "number" },
           "total_engagement": { "type": "number" },
-          "avg_engagement_per_post": { "type": "number" },
-          "positioning_takeaway": { "type": "string" }
+          "url": { "type": "string" }
         },
         "required": [
           "company",
-          "posts_count",
-          "total_engagement",
-          "avg_engagement_per_post",
-          "positioning_takeaway"
+          "post_date",
+          "content_summary",
+          "likes",
+          "comments",
+          "shares",
+          "total_engagement"
         ]
       }
     },
@@ -39,42 +45,17 @@
           "themes": {
             "type": "array",
             "items": { "type": "string" }
-          }
+          },
+          "positioning_takeaway": { "type": "string" }
         },
-        "required": ["company", "themes"]
+        "required": ["company", "themes", "positioning_takeaway"]
       }
-    },
-    "top_posts": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "company": { "type": "string" },
-          "post_date": { "type": "string" },
-          "engagement": { "type": "number" },
-          "summary": { "type": "string" },
-          "url": { "type": "string" }
-        },
-        "required": ["company", "post_date", "engagement", "summary", "url"]
-      }
-    },
-    "bd_signals": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "recommended_actions": {
-      "type": "array",
-      "items": { "type": "string" }
     }
   },
   "required": [
     "email_subject",
     "executive_summary",
     "competitive_snapshot",
-    "theme_analysis",
-    "top_posts",
-    "bd_signals",
-    "recommended_actions"
+    "theme_analysis"
   ]
 }

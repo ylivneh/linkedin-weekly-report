@@ -365,51 +365,54 @@ Weekly LinkedIn summary data:
     raise RuntimeError("OpenAI call failed after retries")
 
 def build_fallback_report(summary_payload: dict) -> dict:
-    snapshot = []
+    competitive_snapshot = []
     theme_analysis = []
-    top_posts = []
 
     for company in summary_payload["companies"]:
-        snapshot.append(
-            f"{company['company']}: {company['posts_count']} posts, "
-            f"{company['total_engagement']} total engagement, "
-            f"{company['avg_engagement_per_post']} avg/post"
-        )
+        # Generate positioning takeaway from stats
+        posts_count = company["posts_count"]
+        total_engagement = company["total_engagement"]
+        avg_engagement = company["avg_engagement_per_post"]
+
+        if posts_count == 0:
+            takeaway = "No activity this week."
+        elif avg_engagement > 50:
+            takeaway = f"Highly active with strong engagement ({avg_engagement:.1f} avg/post)."
+        elif avg_engagement > 30:
+            takeaway = f"Moderately active with decent engagement ({avg_engagement:.1f} avg/post)."
+        else:
+            takeaway = f"Low activity level ({posts_count} posts, {avg_engagement:.1f} avg/post)."
 
         theme_analysis.append({
             "company": company["company"],
-            "themes": company["top_themes"]
+            "themes": company["top_themes"],
+            "positioning_takeaway": takeaway
         })
 
-        for p in company["top_posts"][:1]:
-            top_posts.append({
+        for p in company["top_posts"]:
+            competitive_snapshot.append({
                 "company": company["company"],
                 "post_date": p["post_date"],
-                "engagement": p["total_engagement"],
-                "summary": p["content_excerpt"][:140],
+                "content_summary": p["content_excerpt"][:200],
+                "likes": p["likes"],
+                "comments": p["comments"],
+                "shares": p["shares"],
+                "total_engagement": p["total_engagement"],
                 "url": p["post_url"]
             })
 
+    # Sort by engagement descending
+    competitive_snapshot.sort(key=lambda x: x["total_engagement"], reverse=True)
+
     report = {
-        "email_subject": "Weekly LinkedIn Competitive Report - Fallback Summary",
-        "executive_summary": "OpenAI report generation failed, so this fallback summary was generated from the normalized data.",
-        "competitive_snapshot": [
-            {
-                "company": c["company"],
-                "posts_count": c["posts_count"],
-                "total_engagement": c["total_engagement"],
-                "avg_engagement_per_post": c["avg_engagement_per_post"],
-                "positioning_takeaway": "Fallback summary only."
-            }
-            for c in summary_payload["companies"]
+        "email_subject": "דוח LinkedIn תחרותי שבועי - סיכום חלופי",
+        "executive_summary": [
+            "כישלון דור דוח OpenAI, לכן סיכום חלופי זה נוצר מהנתונים המנורמלים.",
+            "אנא נסה שוב כשהטוקן מתוקן.",
+            "טבלת הפוסטים והנושאים עדיין זמינים למעלה."
         ],
-        "theme_analysis": theme_analysis,
-        "top_posts": top_posts,
-        "bd_signals": snapshot,
-        "recommended_actions": [
-            "Re-run the workflow once OpenAI API quota is available.",
-            "Verify OpenAI billing, credits, and API key project scope."
-        ]
+        "competitive_snapshot": competitive_snapshot,
+        "theme_analysis": theme_analysis
     }
 
     save_json(REPORT_JSON_FILE, report)
@@ -422,51 +425,92 @@ def render_html_email(report: dict) -> str:
 
     body.append(f"<h2>{html.escape(report['email_subject'])}</h2>")
 
-    body.append("<h3>Executive Summary</h3>")
-    body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
+    body.append("<h3>תמונת מצב תחרותית</h3>")
 
-    body.append("<h3>Competitive Snapshot</h3>")
-    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse;'>")
-    body.append("<tr><th>Company</th><th>Posts</th><th>Total Engagement</th><th>Avg/Post</th><th>Takeaway</th></tr>")
-    for item in report["competitive_snapshot"]:
+    # Get unique companies in order they appear
+    companies_data = {}
+    for post in report["competitive_snapshot"]:
+        company = post["company"]
+        if company not in companies_data:
+            companies_data[company] = []
+        companies_data[company].append(post)
+
+    # Render table for each company
+    for company, posts in companies_data.items():
+        body.append(f"<h4>{html.escape(company)}</h4>")
+        body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
+        body.append("<tr><th>תאריך</th><th>נושא</th><th>לייקים</th><th>תגובות</th><th>שיתופים</th></tr>")
+
+        total_likes = 0
+        total_comments = 0
+        total_shares = 0
+
+        for post in posts:
+            url_link = f" <a href=\"{html.escape(post.get('url', '#'))}\">קישור</a>" if post.get('url') else ""
+            body.append(
+                "<tr>"
+                f"<td>{html.escape(str(post['post_date']))}</td>"
+                f"<td>{html.escape(str(post['content_summary']))}{url_link}</td>"
+                f"<td>{html.escape(str(post['likes']))}</td>"
+                f"<td>{html.escape(str(post['comments']))}</td>"
+                f"<td>{html.escape(str(post['shares']))}</td>"
+                "</tr>"
+            )
+            total_likes += post['likes']
+            total_comments += post['comments']
+            total_shares += post['shares']
+
+        # Add total row
         body.append(
-            "<tr>"
-            f"<td>{html.escape(str(item['company']))}</td>"
-            f"<td>{html.escape(str(item['posts_count']))}</td>"
-            f"<td>{html.escape(str(item['total_engagement']))}</td>"
-            f"<td>{html.escape(str(item['avg_engagement_per_post']))}</td>"
-            f"<td>{html.escape(str(item['positioning_takeaway']))}</td>"
+            "<tr style='font-weight: bold;'>"
+            f"<td colspan='1'>סה״כ</td>"
+            f"<td></td>"
+            f"<td>{total_likes}</td>"
+            f"<td>{total_comments}</td>"
+            f"<td>{total_shares}</td>"
             "</tr>"
         )
+        body.append("</table>")
+        body.append("<br/>")
+
+    # Add company summary table
+    body.append("<h3>סיכום שבועי</h3>")
+    body.append("<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; direction: rtl;'>")
+    body.append("<tr><th>חברה</th><th>פוסטים</th><th>reactions</th><th>ממוצע לפוסט</th><th>תובנות</th></tr>")
+
+    for company, posts in companies_data.items():
+        posts_count = len(posts)
+        total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
+        avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
+
+        # Extract positioning takeaway from theme_analysis
+        takeaway = ""
+        for theme_item in report.get("theme_analysis", []):
+            if theme_item.get("company") == company:
+                takeaway = theme_item.get("positioning_takeaway", "")
+                break
+
+        body.append(
+            "<tr>"
+            f"<td>{html.escape(company)}</td>"
+            f"<td>{posts_count}</td>"
+            f"<td>{total_engagement}</td>"
+            f"<td>{avg_engagement}</td>"
+            f"<td>{html.escape(takeaway)}</td>"
+            "</tr>"
+        )
+
     body.append("</table>")
+    body.append("<br/>")
 
-    body.append("<h3>Theme Analysis</h3><ul>")
-    for item in report["theme_analysis"]:
-        themes = ", ".join(item.get("themes", []))
-        body.append(
-            f"<li><b>{html.escape(item['company'])}</b>: {html.escape(themes)}</li>"
-        )
-    body.append("</ul>")
-
-    body.append("<h3>Top Posts</h3><ul>")
-    for item in report["top_posts"]:
-        body.append(
-            f"<li><b>{html.escape(item['company'])}</b> — {html.escape(item['post_date'])} — "
-            f"Engagement {html.escape(str(item['engagement']))} — "
-            f"{html.escape(item['summary'])} — "
-            f"<a href=\"{html.escape(item['url'])}\">Open post</a></li>"
-        )
-    body.append("</ul>")
-
-    body.append("<h3>BD Signals</h3><ul>")
-    for item in report["bd_signals"]:
-        body.append(f"<li>{html.escape(item)}</li>")
-    body.append("</ul>")
-
-    body.append("<h3>Recommended Actions</h3><ul>")
-    for item in report["recommended_actions"]:
-        body.append(f"<li>{html.escape(item)}</li>")
-    body.append("</ul>")
+    # Handle both string and list formats for executive_summary (no section title)
+    if isinstance(report.get("executive_summary"), list):
+        body.append("<ul>")
+        for item in report["executive_summary"]:
+            body.append(f"<li>{html.escape(item)}</li>")
+        body.append("</ul>")
+    else:
+        body.append(f"<p>{html.escape(report['executive_summary'])}</p>")
 
     try:
         template = load_text("competitive_agent/email_template.html")
@@ -482,18 +526,58 @@ def send_email(report: dict):
     recipients = [x.strip() for x in RECIPIENT_EMAIL.split(",")]
     msg["To"] = ", ".join(recipients)
 
-    plain = "\n".join([
+    # Build plain text version by company
+    companies_data = {}
+    for post in report["competitive_snapshot"]:
+        company = post["company"]
+        if company not in companies_data:
+            companies_data[company] = []
+        companies_data[company].append(post)
+
+    plain_lines = [
         report["email_subject"],
         "",
-        "Executive Summary",
-        report["executive_summary"],
-        "",
-        "BD Signals",
-        *[f"- {x}" for x in report["bd_signals"]],
-        "",
-        "Recommended Actions",
-        *[f"- {x}" for x in report["recommended_actions"]],
-    ])
+        "תמונת מצב תחרותית",
+        ""
+    ]
+
+    for company, posts in companies_data.items():
+        plain_lines.append(company)
+        for post in posts:
+            plain_lines.append(
+                f"  {post['post_date']}: {post['content_summary'][:80]} "
+                f"(לייקים: {post['likes']}, תגובות: {post['comments']}, שיתופים: {post['shares']})"
+            )
+        total_likes = sum(p['likes'] for p in posts)
+        total_comments = sum(p['comments'] for p in posts)
+        total_shares = sum(p['shares'] for p in posts)
+        plain_lines.append(f"  סה״כ: לייקים {total_likes}, תגובות {total_comments}, שיתופים {total_shares}")
+        plain_lines.append("")
+
+    # Add company summary
+    plain_lines.append("סיכום שבועי")
+    for company, posts in companies_data.items():
+        posts_count = len(posts)
+        total_engagement = sum(p['likes'] + p['comments'] + p['shares'] for p in posts)
+        avg_engagement = round(total_engagement / posts_count, 2) if posts_count else 0
+        takeaway = ""
+        for theme_item in report.get("theme_analysis", []):
+            if theme_item.get("company") == company:
+                takeaway = theme_item.get("positioning_takeaway", "")
+                break
+        plain_lines.append(
+            f"{company}: {posts_count} פוסטים, reactions {total_engagement}, "
+            f"ממוצע {avg_engagement} - {takeaway}"
+        )
+    plain_lines.append("")
+
+    # Add executive summary bullets (no section header)
+    if isinstance(report.get("executive_summary"), list):
+        plain_lines.extend([f"• {item}" for item in report["executive_summary"]])
+    else:
+        plain_lines.append(report.get("executive_summary", ""))
+
+    plain = "\n".join(plain_lines)
 
     msg.set_content(plain)
     msg.add_alternative(render_html_email(report), subtype="html")
